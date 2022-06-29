@@ -6,22 +6,48 @@ require("dotenv").config();
 
 let userId = 0;
 let users = [];
-let refreshToken = [];
+let refreshTokens = [];
 const saltRounds = 4;
 
 //generate access token with user data
 const generateAccessToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "20s" });
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: 60 });
 };
 
 //Generate refresh token
 const generateRefreshToken = (payload) => {
-  return jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET);
+  return jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET, {
+    expiresIn: "1h",
+  });
+};
+
+const generateBothToken = (id, username, email, role) => {
+  const accessToken = generateAccessToken({
+    id,
+    username,
+    email,
+    role,
+  });
+
+  const refreshToken = generateRefreshToken({
+    id,
+    username,
+    email,
+    role,
+  });
+
+  return { accessToken, refreshToken };
 };
 
 //Route for register
 authRouter.post("/register", (req, res) => {
   const { username, email, password, role } = req.body;
+
+  //Check if user already exists
+  if (users.find((user) => user.email === email) != undefined) {
+    res.status(400).json({ error: "User already exists!" });
+    return;
+  }
 
   //Generate salt for hash
   bcrypt.genSalt(saltRounds, (error, salt) => {
@@ -46,21 +72,16 @@ authRouter.post("/register", (req, res) => {
         role,
       });
 
-      const accessToken = generateAccessToken({
-        id: userId,
-        username: username,
-        email: email,
-        role: role,
-      });
+      const { accessToken, refreshToken } = generateBothToken(
+        userId,
+        username,
+        email,
+        role
+      );
 
-      const refreshToken = generateRefreshToken({
-        id: userId,
-        username: username,
-        email: email,
-        role: role,
-      });
+      refreshTokens.push(refreshToken);
 
-      res.json({ accessToken, refreshToken });
+      res.status(201).json({ accessToken, refreshToken });
     });
   });
 });
@@ -70,9 +91,7 @@ authRouter.post("/login", (req, res) => {
   const { email, password } = req.body;
 
   //Find user data from array or database
-  const user = users.find((currentUser) => {
-    return currentUser.email === email;
-  });
+  const user = users.find((currentUser) => currentUser.email === email);
 
   //if array or database does not have provided email
   if (user === undefined) {
@@ -84,6 +103,7 @@ authRouter.post("/login", (req, res) => {
   bcrypt.compare(password, user.password, (error, result) => {
     if (error) {
       console.log(error);
+      return;
     }
 
     //Switch between wrong password and token
@@ -93,19 +113,14 @@ authRouter.post("/login", (req, res) => {
         break;
 
       default:
-        const accessToken = generateAccessToken({
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          role: user.role,
-        });
+        const { accessToken, refreshToken } = generateBothToken(
+          user.id,
+          user.username,
+          user.email,
+          user.role
+        );
 
-        const refreshToken = generateRefreshToken({
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          role: user.role,
-        });
+        refreshTokens.push(refreshToken);
 
         res.json({ accessToken, refreshToken });
         break;
@@ -114,6 +129,14 @@ authRouter.post("/login", (req, res) => {
 });
 
 //Route to get access token from refresh token
-authRouter.get("/token", (req, res) => {});
+authRouter.post("/accessToken", (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) res.json({ error: "Request must include refresh token!" });
+
+  const { id, usename, email, role } = jwt.decode(refreshToken);
+  const accessToken = generateAccessToken({ id, usename, email, role });
+  res.json({ accessToken });
+});
 
 module.exports = authRouter;
