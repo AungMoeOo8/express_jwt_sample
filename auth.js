@@ -9,12 +9,10 @@ let users = [];
 let refreshTokens = [];
 const saltRounds = 4;
 
-//generate access token with user data
 const generateAccessToken = (payload) => {
   return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: 60 });
 };
 
-//Generate refresh token
 const generateRefreshToken = (payload) => {
   return jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET, {
     expiresIn: "1h",
@@ -56,7 +54,6 @@ authRouter.post("/register", (req, res) => {
       return;
     }
 
-    //Hash the password using generated salt
     bcrypt.hash(password, salt, (error, hash) => {
       if (error) {
         res.json({ hashError: error });
@@ -99,7 +96,6 @@ authRouter.post("/login", (req, res) => {
     return;
   }
 
-  //Compare provided password and hashed password
   bcrypt.compare(password, user.password, (error, result) => {
     if (error) {
       console.log(error);
